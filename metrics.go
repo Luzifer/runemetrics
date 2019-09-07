@@ -127,6 +127,26 @@ func getPlayerInfo(name string, activities int) (*playerInfo, error) {
 
 			out.SkillValues[i].Updated = time.Now()
 		}
+
+		var (
+			lastActivity = out.Activities[len(out.Activities)-1]
+			skip         = true
+		)
+
+		for _, a := range playerInfoCache.Activities {
+			// Times are no good match: they might be duplicated, we search
+			// last message which should never duplicate.
+			if a.Details == lastActivity.Details {
+				skip = false
+				continue
+			}
+
+			if skip {
+				continue
+			}
+
+			out.Activities = append(out.Activities, a)
+		}
 	}
 
 	if knownTotalXP != out.TotalXP {
