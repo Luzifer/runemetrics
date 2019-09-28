@@ -41,7 +41,8 @@ type skill struct {
 	Rank  int64   `json:"rank"`
 	XP    int64   `json:"xp"`
 
-	Updated time.Time
+	TargetLevel int
+	Updated     time.Time
 }
 
 type playerInfo struct {
@@ -122,6 +123,7 @@ func getPlayerInfo(name string, activities int) (*playerInfo, error) {
 		for i, nSk := range out.SkillValues {
 			if oSk := playerInfoCache.GetSkill(nSk.ID); oSk.XP == nSk.XP {
 				out.SkillValues[i].Updated = oSk.Updated
+				out.SkillValues[i].TargetLevel = oSk.TargetLevel
 				continue
 			}
 

@@ -8,26 +8,52 @@ type skillInfo struct {
 	skillCurve string // ???
 }
 
-func (s skillInfo) NextLevelXP(level int) int64 {
+func (s skillInfo) LevelFromXP(xp int64) int {
 	levelTree := levels
 	if s.skillCurve != "" {
 		levelTree = masterLevels
 	}
 
-	return levelTree[level+1]
+	for i := 1; i <= len(levelTree); i++ {
+		if levelTree[i] > xp {
+			return i - 1
+		}
+	}
+
+	return 1
 }
 
-func (s skillInfo) LevelPercentage(level int, xp int64) float64 {
+func (s skillInfo) LevelXP(level int) int64 {
+	levelTree := levels
+	if s.skillCurve != "" {
+		levelTree = masterLevels
+	}
+
+	return levelTree[level]
+}
+
+func (s skillInfo) LevelPercentage(xp int64) float64 {
 	var (
-		xpCurr = float64(s.NextLevelXP(level - 1))
-		xpNext = float64(s.NextLevelXP(level))
+		level  = s.LevelFromXP(xp)
+		xpCurr = float64(s.LevelXP(level))
+		xpNext = float64(s.LevelXP(level + 1))
 	)
 
 	return (float64(xp) - xpCurr) / (xpNext - xpCurr) * 100
 }
 
-func (s skillInfo) XPToNextLevel(level int, xp int64) int64 {
-	return s.NextLevelXP(level) - xp
+func (s skillInfo) TargetPercentage(level int, xp int64) float64 {
+	var xpNext = float64(s.LevelXP(level))
+	return float64(xp) / xpNext * 100
+}
+
+func (s skillInfo) XPToNextLevel(xp int64) int64 {
+	level := s.LevelFromXP(xp)
+	return s.LevelXP(level+1) - xp
+}
+
+func (s skillInfo) XPToTargetLevel(level int, xp int64) int64 {
+	return s.LevelXP(level) - xp
 }
 
 var skillList = []skillInfo{

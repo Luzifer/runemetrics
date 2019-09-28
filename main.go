@@ -173,14 +173,25 @@ func updateUI(player string) error {
 	levelTable.RowStyles[0] = ui.Style{Fg: ui.ColorWhite, Modifier: ui.ModifierBold}
 	levelTable.SetRect(0, 6, termWidth, 6+2+len(playerData.SkillValues)+1)
 	levelTable.RowSeparator = false
-	levelTable.Rows = [][]string{{"Skill", "Level", "Level %", "XP", "XP to next Level"}}
+	levelTable.Rows = [][]string{{"Skill", "Level", "Level %", "XP", "XP remaining"}}
 	for i, s := range playerData.SkillValues {
+		var (
+			remaining  = strconv.FormatInt(s.ID.Info().XPToNextLevel(s.XP/10), 10)
+			percentage = strconv.FormatFloat(s.ID.Info().LevelPercentage(s.XP/10), 'f', 1, 64)
+		)
+
+		if s.TargetLevel > 0 {
+			remaining = strconv.FormatInt(s.ID.Info().XPToTargetLevel(s.TargetLevel, s.XP/10), 10)
+			percentage = strconv.FormatFloat(s.ID.Info().TargetPercentage(s.TargetLevel, s.XP/10), 'f', 1, 64)
+			levelTable.RowStyles[i+1] = ui.Style{Fg: ui.ColorYellow}
+		}
+
 		levelTable.Rows = append(levelTable.Rows, []string{
 			s.ID.String(),
 			strconv.Itoa(s.Level),
-			strconv.FormatFloat(s.ID.Info().LevelPercentage(s.Level, s.XP/10), 'f', 1, 64),
+			percentage,
 			strconv.FormatInt(s.XP/10, 10),
-			strconv.FormatInt(s.ID.Info().XPToNextLevel(s.Level, s.XP/10), 10),
+			remaining,
 		})
 
 		if time.Since(s.Updated) < cfg.MarkerTime {
