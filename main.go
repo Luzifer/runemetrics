@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -29,7 +30,9 @@ var (
 		VersionAndExit bool          `flag:"version" default:"false" description:"Prints current version and exits"`
 	}{}
 
+	eventsPage = 0
 	lastUpdate = map[string]time.Time{}
+	playerData *playerInfo
 
 	version = "dev"
 )
@@ -73,8 +76,6 @@ func main() {
 		updateTicker = time.NewTimer(0)
 	)
 
-	updateUI(player)
-
 	for {
 		select {
 
@@ -89,13 +90,25 @@ func main() {
 
 			case "<Resize>":
 				ui.Clear()
-				updateUI(player)
+				updateUI(playerData, nil)
+
+			case "<PageDown>":
+				eventsPage++
+				updateUI(playerData, nil)
+
+			case "<PageUp>":
+				eventsPage--
+				updateUI(playerData, nil)
 
 			}
 
 		case <-updateTicker.C:
-			if err := updateUI(player); err != nil {
-				log.WithError(err).Error("Unable to update metrics")
+			if playerData, err = getPlayerInfo(player, 20); err != nil {
+				log.WithError(err).Error("Unable to fetch metrics")
+			}
+
+			if err := updateUI(playerData, err); err != nil {
+				log.WithError(err).Error("Unable to update UI")
 				return
 			}
 			updateTicker.Reset(time.Until(cron.Next(time.Now())))
@@ -108,10 +121,8 @@ func main() {
 	}
 }
 
-func updateUI(player string) error {
+func updateUI(playerData *playerInfo, err error) error {
 	termWidth, termHeight := ui.TerminalDimensions()
-
-	playerData, err := getPlayerInfo(player, 20)
 
 	// Status-bar
 	status := widgets.NewParagraph()
@@ -202,11 +213,24 @@ func updateUI(player string) error {
 
 	// Latest events
 	events := widgets.NewTable()
-	events.Title = "Event Log"
 	events.RowSeparator = false
 	events.ColumnWidths = []int{12, termWidth - 3 - 12}
 	events.SetRect(0, 6+2+len(playerData.SkillValues)+1, termWidth, termHeight-3)
-	for i, logEntry := range playerData.Activities {
+
+	eventsPerPage := termHeight - 3 - (6 + 2 + len(playerData.SkillValues) + 1)
+	eventPages := int(math.Ceil(float64(len(playerData.Activities)) / float64(eventsPerPage)))
+
+	if eventsPage < 0 {
+		eventsPage = 0
+	}
+
+	if eventsPage >= eventPages {
+		eventsPage = eventPages - 1
+	}
+
+	events.Title = fmt.Sprintf("Event Log (%d / %d)", eventsPage+1, eventPages)
+
+	for i, logEntry := range playerData.Activities[eventsPage*eventsPerPage:] {
 		date, _ := logEntry.GetParsedDate()
 		events.Rows = append(
 			events.Rows,
