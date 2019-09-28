@@ -30,9 +30,13 @@ var (
 		VersionAndExit bool          `flag:"version" default:"false" description:"Prints current version and exits"`
 	}{}
 
-	eventsPage = 0
-	lastUpdate = map[string]time.Time{}
-	playerData *playerInfo
+	eventsPage     = 0
+	lastUpdate     = map[string]time.Time{}
+	playerData     *playerInfo
+	selectedMetric = 0
+
+	inputPrompt string
+	inputBuffer string
 
 	version = "dev"
 )
@@ -82,14 +86,56 @@ func main() {
 		case evt := <-ui.PollEvents():
 			switch evt.ID {
 
+			case "1", "2", "3", "4", "5", "6", "7", "8", "9", "0":
+				if inputPrompt != "" {
+					inputBuffer = inputBuffer + evt.ID
+				}
+				updateUI(playerData, nil)
+
 			case "q", "<C-c>":
 				return
+
+			case "t":
+				if inputPrompt != "" {
+					continue
+				}
+				inputPrompt = "Enter target level"
+				inputBuffer = ""
+				updateUI(playerData, nil)
 
 			case "<C-r>":
 				updateTicker.Reset(0)
 
-			case "<Resize>":
-				ui.Clear()
+			case "<Down>":
+				selectedMetric++
+				if selectedMetric >= len(playerData.SkillValues) {
+					selectedMetric = len(playerData.SkillValues) - 1
+				}
+				updateUI(playerData, nil)
+
+			case "<Enter>":
+				if inputPrompt == "" {
+					continue
+				}
+
+				var tlvl int
+
+				inputPrompt = ""
+				if inputBuffer != "" {
+					tlvl, err = strconv.Atoi(inputBuffer)
+				}
+
+				if err == nil {
+					if tlvl < playerData.SkillValues[selectedMetric].Level {
+						tlvl = 0
+					}
+					playerData.SkillValues[selectedMetric].TargetLevel = tlvl
+				}
+
+				updateUI(playerData, err)
+
+			case "<Escape>":
+				inputPrompt = ""
 				updateUI(playerData, nil)
 
 			case "<PageDown>":
@@ -98,6 +144,17 @@ func main() {
 
 			case "<PageUp>":
 				eventsPage--
+				updateUI(playerData, nil)
+
+			case "<Resize>":
+				ui.Clear()
+				updateUI(playerData, nil)
+
+			case "<Up>":
+				selectedMetric--
+				if selectedMetric < 0 {
+					selectedMetric = 0
+				}
 				updateUI(playerData, nil)
 
 			}
@@ -136,9 +193,12 @@ func updateUI(playerData *playerInfo, err error) error {
 	defer ui.Render(status)
 
 	if err != nil {
-		status.Text = fmt.Sprintf("Unable to get player info: %s", err.Error())
+		status.Text = fmt.Sprintf("Error: %s", err.Error())
 		status.BorderStyle.Fg = ui.ColorRed
-		return nil
+
+		if playerData == nil {
+			return nil
+		}
 	}
 
 	// Header
@@ -180,34 +240,58 @@ func updateUI(playerData *playerInfo, err error) error {
 	// Levels
 	levelTable := widgets.NewTable()
 	levelTable.Title = "Levels"
-	levelTable.TextAlignment = ui.AlignRight
+	//levelTable.TextAlignment = ui.AlignRight
 	levelTable.RowStyles[0] = ui.Style{Fg: ui.ColorWhite, Modifier: ui.ModifierBold}
 	levelTable.SetRect(0, 6, termWidth, 6+2+len(playerData.SkillValues)+1)
 	levelTable.RowSeparator = false
-	levelTable.Rows = [][]string{{"Skill", "Level", "Level %", "XP", "XP remaining"}}
+
+	levelTable.ColumnWidths = []int{termWidth - 2 - 6 - 6 - 8 - 11 - 13 - 9, 6, 8, 11, 13, 9}
+
+	levelTable.Rows = [][]string{{
+		"  Skill",
+		fmt.Sprintf("%*s", 6, "Level"),
+		fmt.Sprintf("%*s", 8, "Level %"),
+		fmt.Sprintf("%*s", 11, "Current XP"),
+		fmt.Sprintf("%*s", 13, "XP remaining"),
+		fmt.Sprintf("%*s", 9, "To Level"),
+	}}
 	for i, s := range playerData.SkillValues {
 		var (
+			name       = s.ID.String()
 			remaining  = strconv.FormatInt(s.ID.Info().XPToNextLevel(s.XP/10), 10)
 			percentage = strconv.FormatFloat(s.ID.Info().LevelPercentage(s.XP/10), 'f', 1, 64)
+			target     = strconv.Itoa(s.Level + 1)
+
+			rowStyle = ui.Style{Fg: ui.ColorWhite}
 		)
+
+		if i == selectedMetric {
+			name = "> " + name
+		} else {
+			name = "  " + name
+		}
 
 		if s.TargetLevel > 0 {
 			remaining = strconv.FormatInt(s.ID.Info().XPToTargetLevel(s.TargetLevel, s.XP/10), 10)
 			percentage = strconv.FormatFloat(s.ID.Info().TargetPercentage(s.TargetLevel, s.XP/10), 'f', 1, 64)
-			levelTable.RowStyles[i+1] = ui.Style{Fg: ui.ColorYellow}
+			target = strconv.Itoa(s.TargetLevel)
+			rowStyle.Fg = ui.ColorYellow
 		}
 
 		levelTable.Rows = append(levelTable.Rows, []string{
-			s.ID.String(),
-			strconv.Itoa(s.Level),
-			percentage,
-			strconv.FormatInt(s.XP/10, 10),
-			remaining,
+			name,
+			fmt.Sprintf("%*s", 6, strconv.Itoa(s.Level)),
+			fmt.Sprintf("%*s", 8, percentage),
+			fmt.Sprintf("%*s", 11, strconv.FormatInt(s.XP/10, 10)),
+			fmt.Sprintf("%*s", 13, remaining),
+			fmt.Sprintf("%*s", 9, target),
 		})
 
 		if time.Since(s.Updated) < cfg.MarkerTime {
-			levelTable.RowStyles[i+1] = ui.Style{Fg: ui.ColorGreen}
+			rowStyle.Fg = ui.ColorGreen
 		}
+
+		levelTable.RowStyles[i+1] = rowStyle
 	}
 	ui.Render(levelTable)
 
@@ -245,6 +329,17 @@ func updateUI(playerData *playerInfo, err error) error {
 		}
 	}
 	ui.Render(events)
+
+	// Input box
+	if inputPrompt != "" {
+		input := widgets.NewParagraph()
+		input.Title = inputPrompt
+		input.Text = inputBuffer + "_"
+		inputTop := int(math.Floor(float64(termHeight-3)) / 2)
+		inputMargin := int(math.Floor(float64(termWidth) / 4))
+		input.SetRect(inputMargin, inputTop, termWidth-inputMargin, inputTop+3)
+		ui.Render(input)
+	}
 
 	return nil
 }
