@@ -122,7 +122,11 @@ func getPlayerInfo(name string, activities int) (*playerInfo, error) {
 	if playerInfoCache != nil {
 		for i, nSk := range out.SkillValues {
 			oSk := playerInfoCache.GetSkill(nSk.ID)
-			out.SkillValues[i].TargetLevel = oSk.TargetLevel
+
+			if oSk.TargetLevel > nSk.Level {
+				out.SkillValues[i].TargetLevel = oSk.TargetLevel
+			}
+
 			if oSk.XP == nSk.XP {
 				out.SkillValues[i].Updated = oSk.Updated
 				continue
